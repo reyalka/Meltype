@@ -48,6 +48,13 @@ function parseForm(body) {
 
 const field = (form, prefix) => Object.entries(form).find(([k]) => k.startsWith(prefix))?.[1] ?? '';
 
+// フォームの文字列全体を囲むコード表記だけを外す。中の空白や文字は完全一致の比較に残す。
+function textField(form, prefix) {
+  const text = field(form, prefix);
+  const code = text.match(/^(`+)([^\r\n]*?)(`+)$/);
+  return code && code[1] === code[3] && !code[2].includes(code[1]) ? code[2] : text;
+}
+
 function osLabels(os) {
   const labels = [];
   if (/Windows/i.test(os)) labels.push('windows');
@@ -200,7 +207,7 @@ async function parse() {
     const version = field(form, 'Meltype の版');
     if ('Meltype の版' in form && !/\d+\.\d+/.test(version)) problems.push('**Meltype の版** を書いてください (Windows: トレイのアイコンを右クリック →「Meltype について...」)。');
     const misdetection = labels.has('誤判定') || '出たもの' in form;
-    const keys = field(form, '打ったもの');
+    const keys = textField(form, '打ったもの');
     if (misdetection && !isKeys(keys)) problems.push('**打ったもの** は、変換された文字ではなく、押したキーをそのまま英字で書いてください (例: `nihongowohanasu`)。');
 
     if (problems.length > 0) add.add('情報待ち');
@@ -216,7 +223,7 @@ async function parse() {
     if (misdetection && problems.length === 0) {
       return output({
         action: 'repro', issue, keys: keys.slice(0, MaxKeys), last: lastKey(field(form, '最後に押したキー')),
-        reported: field(form, '出たもの'), expected: field(form, '期待した結果'), kind: field(form, '種類'),
+        reported: textField(form, '出たもの'), expected: textField(form, '期待した結果'), kind: field(form, '種類'),
       });
     }
     return output({ action: 'none' });
