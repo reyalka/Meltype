@@ -16,13 +16,21 @@ const Login = process.env.SPONSORS_LOGIN ?? 'yksr-melt';
 const SponsorUrl = `https://github.com/sponsors/${Login}`;
 
 async function graphql(query: string, variables: { login: string; after: string | null }) {
-  const response = await fetch(`${process.env.GITHUB_GRAPHQL_URL ?? 'https://api.github.com/graphql'}`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${process.env.GITHUB_TOKEN}`, 'Content-Type': 'application/json', 'User-Agent': 'meltype-bot' },
-    body: JSON.stringify({ query, variables }),
-  });
-  const result = await response.json() as { data: SponsorsData; errors?: unknown };
-  if (!response.ok || result.errors) throw new Error(`GraphQL: ${response.status} ${JSON.stringify(result.errors ?? result)}`);
+  const response = await fetch(
+    `${process.env.GITHUB_GRAPHQL_URL ?? 'https://api.github.com/graphql'}`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'meltype-bot',
+      },
+      body: JSON.stringify({ query, variables }),
+    },
+  );
+  const result = (await response.json()) as { data: SponsorsData; errors?: unknown };
+  if (!response.ok || result.errors)
+    throw new Error(`GraphQL: ${response.status} ${JSON.stringify(result.errors ?? result)}`);
   return result.data;
 }
 
@@ -57,8 +65,10 @@ function render(logins: string[]) {
   if (logins.length === 0) {
     return `<p align="center">\n  <sub>まだいません。最初の 1 人を募集中です！ → <a href="${SponsorUrl}">GitHub Sponsors</a></sub>\n</p>`;
   }
-  const icons = logins.map(login =>
-    `  <a href="https://github.com/${login}"><img src="https://github.com/${login}.png?size=120" width="60" alt="@${login}" title="@${login}"></a>`);
+  const icons = logins.map(
+    (login) =>
+      `  <a href="https://github.com/${login}"><img src="https://github.com/${login}.png?size=120" width="60" alt="@${login}" title="@${login}"></a>`,
+  );
   return `<p align="center">\n${icons.join('\n')}\n</p>`;
 }
 
@@ -74,9 +84,23 @@ function selfTest() {
   const readme = `前\n${Start}\n古い\n${End}\n後\n`;
   const checks = [
     ['誰もいない', replace(readme, render([])).includes('まだいません')],
-    ['2 人', (() => { const r = replace(readme, render(['alice', 'bob'])); return r.includes('github.com/alice.png') && r.includes('@bob') && !r.includes('古い'); })()],
-    ['印の外は変えない', replace(readme, render(['alice'])).startsWith('前\n') && replace(readme, render(['alice'])).endsWith(`${End}\n後\n`)],
-    ['2 回入れ替えても同じ', replace(replace(readme, render(['alice'])), render(['alice'])) === replace(readme, render(['alice']))],
+    [
+      '2 人',
+      (() => {
+        const r = replace(readme, render(['alice', 'bob']));
+        return r.includes('github.com/alice.png') && r.includes('@bob') && !r.includes('古い');
+      })(),
+    ],
+    [
+      '印の外は変えない',
+      replace(readme, render(['alice'])).startsWith('前\n') &&
+        replace(readme, render(['alice'])).endsWith(`${End}\n後\n`),
+    ],
+    [
+      '2 回入れ替えても同じ',
+      replace(replace(readme, render(['alice'])), render(['alice'])) ===
+        replace(readme, render(['alice'])),
+    ],
   ];
   let failed = 0;
   for (const [name, ok] of checks) {
@@ -88,7 +112,9 @@ function selfTest() {
 
 async function main() {
   const logins = await publicSponsors();
-  console.log(`名前を公開している方: ${logins.length} 人${logins.length ? ` (${logins.join(', ')})` : ''}`);
+  console.log(
+    `名前を公開している方: ${logins.length} 人${logins.length ? ` (${logins.join(', ')})` : ''}`,
+  );
   const readme = fs.readFileSync('README.md', 'utf8');
   const next = replace(readme, render(logins));
   if (next === readme) console.log('README は変わりません');

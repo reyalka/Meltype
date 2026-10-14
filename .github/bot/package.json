@@ -2,7 +2,6 @@
   "name": "@meltype/bot",
   "private": true,
   "type": "module",
-  "engines": { "node": "^22.18.0 || ^24.11.0 || >=26.0.0" },
   "scripts": {
     "format": "vp fmt",
     "format:check": "vp fmt --check",
@@ -18,5 +17,8 @@
   "overrides": {
     "vite": "npm:@voidzero-dev/vite-plus-core@1.2.0",
     "vitest": "5.0.4"
+  },
+  "engines": {
+    "node": "^22.18.0 || ^24.11.0 || >=26.0.0"
   }
 }

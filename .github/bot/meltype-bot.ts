@@ -21,10 +21,15 @@ const MaxKeys = 300;
 async function gh<T = unknown>(method: string, url: string, body?: unknown): Promise<T> {
   const response = await fetch(`${api}/repos/${repo}${url}`, {
     method,
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'meltype-bot' },
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'meltype-bot',
+    },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  if (!response.ok) throw new Error(`${method} ${url}: ${response.status} ${await response.text()}`);
+  if (!response.ok)
+    throw new Error(`${method} ${url}: ${response.status} ${await response.text()}`);
   return (response.status === 204 ? null : await response.json()) as T;
 }
 
@@ -48,7 +53,8 @@ function parseForm(body: string | null | undefined) {
   return fields;
 }
 
-const field = (form: Record<string, string>, prefix: string) => Object.entries(form).find(([k]) => k.startsWith(prefix))?.[1] ?? '';
+const field = (form: Record<string, string>, prefix: string) =>
+  Object.entries(form).find(([k]) => k.startsWith(prefix))?.[1] ?? '';
 
 // フォームの文字列全体を囲むコード表記だけを外す。中の空白や文字は完全一致の比較に残す。
 function textField(form: Record<string, string>, prefix: string) {
@@ -76,27 +82,28 @@ const isKeys = (text: string) => text.length > 0 && /^[\x20-\x7e]+$/.test(text);
 async function upsertComment(issue: string | number | undefined, kind: string, text: string) {
   const marker = `${Marker}<!-- ${kind} -->`;
   const comments = await gh<Comment[]>('GET', `/issues/${issue}/comments?per_page=100`);
-  const mine = comments.find(c => c.user?.type === 'Bot' && c.body?.includes(marker));
+  const mine = comments.find((c) => c.user?.type === 'Bot' && c.body?.includes(marker));
   const body = `${marker}\n${text}`;
   if (mine) await gh('PATCH', `/issues/comments/${mine.id}`, { body });
   else await gh('POST', `/issues/${issue}/comments`, { body });
 }
 
 async function react(content: string) {
-  if (event.comment) await gh('POST', `/issues/comments/${event.comment.id}/reactions`, { content }).catch(() => {});
+  if (event.comment)
+    await gh('POST', `/issues/comments/${event.comment.id}/reactions`, { content }).catch(() => {});
 }
 
 const LabelInfo: Record<string, [string, string]> = {
-  '要トリアージ': ['FBCA04', '作者がまだ確認していない報告'],
-  'win11': ['0078D4', 'Windows 11'],
-  'win10': ['5E9ED6', 'Windows 10'],
-  '企業PC': ['5319E7', 'Windows の Enterprise / Education (管理が厳しいことがある)'],
-  '管理者で実行': ['D93F0B', 'Meltype を管理者として実行していた'],
-  'IME自動切替': ['C2E0C6', 'IME 自動切替 (Microsoft IME を使う)'],
-  'Mozcなし': ['E99695', 'Mozc の変換ヘルパーが無い (Microsoft IME だけで変換)'],
-  'かな入力': ['FEF2C0', 'かな入力 (JIS)'],
-  'USキーボード': ['FEF2C0', '日本語 (JIS) 以外のキーボード'],
-  '高DPI': ['FEF2C0', '画面の拡大率が 100% より大きい'],
+  要トリアージ: ['FBCA04', '作者がまだ確認していない報告'],
+  win11: ['0078D4', 'Windows 11'],
+  win10: ['5E9ED6', 'Windows 10'],
+  企業PC: ['5319E7', 'Windows の Enterprise / Education (管理が厳しいことがある)'],
+  管理者で実行: ['D93F0B', 'Meltype を管理者として実行していた'],
+  IME自動切替: ['C2E0C6', 'IME 自動切替 (Microsoft IME を使う)'],
+  Mozcなし: ['E99695', 'Mozc の変換ヘルパーが無い (Microsoft IME だけで変換)'],
+  かな入力: ['FEF2C0', 'かな入力 (JIS)'],
+  USキーボード: ['FEF2C0', '日本語 (JIS) 以外のキーボード'],
+  高DPI: ['FEF2C0', '画面の拡大率が 100% より大きい'],
   '優先: 高': ['B60205', '入力できない・止まる・文字が消えるなど'],
   '優先: 中': ['E99695', 'よくある不具合'],
   '優先: 低': ['C5DEF5', '見た目だけ・一度だけ起きた・回避方法がある など'],
@@ -105,14 +112,15 @@ const LabelInfo: Record<string, [string, string]> = {
   'アプリ: ブラウザー': ['BFDADC', 'Chrome・Edge・Firefox など'],
   'アプリ: ゲーム': ['BFDADC', 'ゲーム'],
   'アプリ: Office': ['BFDADC', 'Word・Excel・Outlook など'],
-  'インストール': ['BFDADC', 'インストール・更新・起動'],
+  インストール: ['BFDADC', 'インストール・更新・起動'],
 };
 
 const knownLabels = new Set();
 async function ensureLabel(name: string) {
   if (knownLabels.has(name)) return;
   knownLabels.add(name);
-  const [color, description] = LabelInfo[name] ?? (/^v\d/.test(name) ? ['EDEDED', 'Meltype の版'] : [null, null]);
+  const [color, description] =
+    LabelInfo[name] ?? (/^v\d/.test(name) ? ['EDEDED', 'Meltype の版'] : [null, null]);
   if (!color) return;
   await gh('POST', '/labels', { name, color, description })
     .catch(() => gh('PATCH', `/labels/${encodeURIComponent(name)}`, { color, description }))
@@ -129,13 +137,30 @@ function environmentLabels(text: string) {
   const os = env['OS'] ?? '';
   if (/^Windows 11/.test(os)) result.push({ label: 'win11', reason: `OS が ${os}` });
   else if (/^Windows 10/.test(os)) result.push({ label: 'win10', reason: `OS が ${os}` });
-  if (/Enterprise|Education/i.test(os)) result.push({ label: '企業PC', reason: 'Windows のエディションが Enterprise / Education (会社・学校の PC は制限があることが多い)' });
-  if (/^Meltype \S/.test(`Meltype ${env['Meltype'] ?? ''}`) && /^\d+\.\d+\.\d+/.test(env['Meltype'] ?? '')) result.push({ label: `v${env['Meltype'].match(/^\d+\.\d+\.\d+/)?.[0]}`, reason: '実行環境の版' });
-  if (/はい/.test(env['管理者として実行'] ?? '')) result.push({ label: '管理者で実行', reason: 'Meltype を管理者として実行していた' });
-  if (/^AutoSwitch/.test(env['モード'] ?? '')) result.push({ label: 'IME自動切替', reason: 'モードが IME 自動切替' });
-  if (/Mozc:\s*なし/.test(env['変換エンジン'] ?? '')) result.push({ label: 'Mozcなし', reason: 'Mozc の変換ヘルパーが無い' });
-  if (/Kana/.test(env['入力方式'] ?? '')) result.push({ label: 'かな入力', reason: '入力方式がかな入力' });
-  if (/日本語以外/.test(env['キーボード'] ?? '')) result.push({ label: 'USキーボード', reason: `キーボードが ${env['キーボード']}` });
+  if (/Enterprise|Education/i.test(os))
+    result.push({
+      label: '企業PC',
+      reason:
+        'Windows のエディションが Enterprise / Education (会社・学校の PC は制限があることが多い)',
+    });
+  if (
+    /^Meltype \S/.test(`Meltype ${env['Meltype'] ?? ''}`) &&
+    /^\d+\.\d+\.\d+/.test(env['Meltype'] ?? '')
+  )
+    result.push({
+      label: `v${env['Meltype'].match(/^\d+\.\d+\.\d+/)?.[0]}`,
+      reason: '実行環境の版',
+    });
+  if (/はい/.test(env['管理者として実行'] ?? ''))
+    result.push({ label: '管理者で実行', reason: 'Meltype を管理者として実行していた' });
+  if (/^AutoSwitch/.test(env['モード'] ?? ''))
+    result.push({ label: 'IME自動切替', reason: 'モードが IME 自動切替' });
+  if (/Mozc:\s*なし/.test(env['変換エンジン'] ?? ''))
+    result.push({ label: 'Mozcなし', reason: 'Mozc の変換ヘルパーが無い' });
+  if (/Kana/.test(env['入力方式'] ?? ''))
+    result.push({ label: 'かな入力', reason: '入力方式がかな入力' });
+  if (/日本語以外/.test(env['キーボード'] ?? ''))
+    result.push({ label: 'USキーボード', reason: `キーボードが ${env['キーボード']}` });
   const scale = Number((env['画面'] ?? '').match(/拡大率\s*(\d+)/)?.[1] ?? 100);
   if (scale > 100) result.push({ label: '高DPI', reason: `画面の拡大率が ${scale}%` });
   return result;
@@ -143,24 +168,44 @@ function environmentLabels(text: string) {
 
 function triageLabels(form: Record<string, string>, labels: Set<string>) {
   const result = [];
-  const text = Object.entries(form).filter(([k]) => !/実行環境|ログ/.test(k)).map(([, v]) => v).join('\n');
+  const text = Object.entries(form)
+    .filter(([k]) => !/実行環境|ログ/.test(k))
+    .map(([, v]) => v)
+    .join('\n');
   const app = field(form, 'どのアプリで') + '\n' + text;
   const isBug = labels.has('bug') || 'どうなったか' in form;
-  if (isBug && ![...labels].some(l => l.startsWith('優先: '))) {
-    const severe = text.match(/止ま|落ち|固ま|フリーズ|クラッシュ|入力できな|打てな|文字が消え|消えた|起動しな|起動でき|インストールでき|動かな|反映され[なず]|違う文字|別の文字|化け|連続で入力|勝手に|二重に|重複/);
-    const minor = text.match(/見た目|表示がずれ|位置がずれ|ちらつ|色が|文言|誤字|デザイン|アイコン/);
+  if (isBug && ![...labels].some((l) => l.startsWith('優先: '))) {
+    const severe = text.match(
+      /止ま|落ち|固ま|フリーズ|クラッシュ|入力できな|打てな|文字が消え|消えた|起動しな|起動でき|インストールでき|動かな|反映され[なず]|違う文字|別の文字|化け|連続で入力|勝手に|二重に|重複/,
+    );
+    const minor = text.match(
+      /見た目|表示がずれ|位置がずれ|ちらつ|色が|文言|誤字|デザイン|アイコン/,
+    );
     const once = field(form, '起きる頻度') === '一度だけ';
-    result.push(severe
-      ? { label: '優先: 高', reason: `本文に「${severe[0]}」とある (入力できない・止まる・違う文字が入る系)` }
-      : minor || once
-        ? { label: '優先: 低', reason: minor ? `本文に「${minor[0]}」とある (見た目の問題)` : '起きる頻度が「一度だけ」' }
-        : { label: '優先: 中', reason: '不具合の報告 (止まる・入力できない等の言葉はない)' });
+    result.push(
+      severe
+        ? {
+            label: '優先: 高',
+            reason: `本文に「${severe[0]}」とある (入力できない・止まる・違う文字が入る系)`,
+          }
+        : minor || once
+          ? {
+              label: '優先: 低',
+              reason: minor
+                ? `本文に「${minor[0]}」とある (見た目の問題)`
+                : '起きる頻度が「一度だけ」',
+            }
+          : { label: '優先: 中', reason: '不具合の報告 (止まる・入力できない等の言葉はない)' },
+    );
     const install = text.match(/インストール|アンインストール|更新|アップデート|起動/);
     if (install) result.push({ label: 'インストール', reason: `本文に「${install[0]}」とある` });
   }
   const areas: [string, RegExp][] = [
     ['アプリ: チャット', /Discord|Slack|LINE|Teams|Messenger|Telegram|チャット/i],
-    ['アプリ: コード', /VS ?Code|Visual Studio|Cursor|JetBrains|IntelliJ|ターミナル|Terminal|PowerShell|コマンドプロンプト|Maya|Blender|エディター|エディタ/i],
+    [
+      'アプリ: コード',
+      /VS ?Code|Visual Studio|Cursor|JetBrains|IntelliJ|ターミナル|Terminal|PowerShell|コマンドプロンプト|Maya|Blender|エディター|エディタ/i,
+    ],
     ['アプリ: ブラウザー', /Chrome|Edge|Firefox|Safari|Brave|ブラウザ/i],
     ['アプリ: ゲーム', /ゲーム|Steam|Minecraft|Valorant|原神/i],
     ['アプリ: Office', /Word|Excel|PowerPoint|Outlook|OneNote|Office/],
@@ -196,43 +241,78 @@ async function parse() {
   if (!event.comment) {
     if (event.action !== 'opened' && event.action !== 'edited') return output({ action: 'none' });
     const form = parseForm(event.issue.body);
-    const labels = new Set(event.issue.labels.map(l => l.name));
+    const labels = new Set(event.issue.labels.map((l) => l.name));
     const add = new Set(osLabels(field(form, 'OS')));
     if (event.action === 'opened') add.add('要トリアージ');
     const reasons = [];
-    for (const { label, reason } of [...environmentLabels(field(form, '実行環境')), ...triageLabels(form, labels)]) {
+    for (const { label, reason } of [
+      ...environmentLabels(field(form, '実行環境')),
+      ...triageLabels(form, labels),
+    ]) {
       if (!add.has(label)) reasons.push(`\`${label}\`: ${reason}`);
       add.add(label);
     }
 
     const problems = [];
     const version = field(form, 'Meltype の版');
-    if ('Meltype の版' in form && !/\d+\.\d+/.test(version)) problems.push('**Meltype の版** を書いてください (Windows: トレイのアイコンを右クリック →「Meltype について...」)。');
+    if ('Meltype の版' in form && !/\d+\.\d+/.test(version))
+      problems.push(
+        '**Meltype の版** を書いてください (Windows: トレイのアイコンを右クリック →「Meltype について...」)。',
+      );
     const misdetection = labels.has('誤判定') || '出たもの' in form;
     const keys = textField(form, '打ったもの');
-    if (misdetection && !isKeys(keys)) problems.push('**打ったもの** は、変換された文字ではなく、押したキーをそのまま英字で書いてください (例: `nihongowohanasu`)。');
+    if (misdetection && !isKeys(keys))
+      problems.push(
+        '**打ったもの** は、変換された文字ではなく、押したキーをそのまま英字で書いてください (例: `nihongowohanasu`)。',
+      );
 
     if (problems.length > 0) add.add('情報待ち');
-    else if (labels.has('情報待ち')) await gh('DELETE', `/issues/${issue}/labels/${encodeURIComponent('情報待ち')}`).catch(() => {});
+    else if (labels.has('情報待ち'))
+      await gh('DELETE', `/issues/${issue}/labels/${encodeURIComponent('情報待ち')}`).catch(
+        () => {},
+      );
     for (const label of ['優先: 高', '優先: 中', '優先: 低', ...add]) await ensureLabel(label);
     if (add.size > 0) await gh('POST', `/issues/${issue}/labels`, { labels: [...add] });
 
     const text = [];
-    if (problems.length > 0) text.push('報告ありがとうございます。確認のために、もう少し教えてください。', '', ...problems.map(p => `- ${p}`), '', '本文を編集して直してもらえれば、自動でもう一度確認します。', '');
-    if (reasons.length > 0) text.push('<details><summary>🤖 自動の仕分け</summary>', '', ...reasons.map(r => `- ${r}`), '', '優先度・分類は本文からの見当です。作者が確認したら `要トリアージ` を外します。', '</details>');
+    if (problems.length > 0)
+      text.push(
+        '報告ありがとうございます。確認のために、もう少し教えてください。',
+        '',
+        ...problems.map((p) => `- ${p}`),
+        '',
+        '本文を編集して直してもらえれば、自動でもう一度確認します。',
+        '',
+      );
+    if (reasons.length > 0)
+      text.push(
+        '<details><summary>🤖 自動の仕分け</summary>',
+        '',
+        ...reasons.map((r) => `- ${r}`),
+        '',
+        '優先度・分類は本文からの見当です。作者が確認したら `要トリアージ` を外します。',
+        '</details>',
+      );
     if (text.length > 0) await upsertComment(issue, 'triage', text.join('\n'));
 
     if (misdetection && problems.length === 0) {
       return output({
-        action: 'repro', issue, keys: keys.slice(0, MaxKeys), last: lastKey(field(form, '最後に押したキー')),
-        reported: textField(form, '出たもの'), expected: textField(form, '期待した結果'), kind: field(form, '種類'),
+        action: 'repro',
+        issue,
+        keys: keys.slice(0, MaxKeys),
+        last: lastKey(field(form, '最後に押したキー')),
+        reported: textField(form, '出たもの'),
+        expected: textField(form, '期待した結果'),
+        kind: field(form, '種類'),
       });
     }
     return output({ action: 'none' });
   }
 
   const line = (event.comment.body ?? '').split('\n')[0].trim();
-  const match = line.match(/^\/(repro|explain|ca|jht|test-repro|test-jht|test-explain|test|pack|help)\b\s*(.*)$/);
+  const match = line.match(
+    /^\/(repro|explain|ca|jht|test-repro|test-jht|test-explain|test|pack|help)\b\s*(.*)$/,
+  );
   if (!match || event.comment.user?.type === 'Bot') return output({ action: 'none' });
   const [, command, rest] = match;
   const maintainer = Maintainers.includes(event.comment.author_association);
@@ -244,11 +324,19 @@ async function parse() {
   }
   if (prOnly.includes(command)) {
     if (!isPr) {
-      await upsertComment(issue, `error-${event.comment.id}`, `\`/${command}\` は Pull Request でだけ使えます。`);
+      await upsertComment(
+        issue,
+        `error-${event.comment.id}`,
+        `\`/${command}\` は Pull Request でだけ使えます。`,
+      );
       return output({ action: 'none' });
     }
     if (!maintainer) {
-      await upsertComment(issue, `error-${event.comment.id}`, `\`/${command}\` はメンテナーだけが使えます (Pull Request のコードを動かすため)。`);
+      await upsertComment(
+        issue,
+        `error-${event.comment.id}`,
+        `\`/${command}\` はメンテナーだけが使えます (Pull Request のコードを動かすため)。`,
+      );
       return output({ action: 'none' });
     }
     await react('eyes');
@@ -259,44 +347,108 @@ async function parse() {
     if (command === 'test-jht') {
       const text = rest.trim().replace(/^`|`$/g, '');
       if (!text) {
-        await upsertComment(issue, `error-${event.comment.id}`, '出てほしい文を書いてください (例: `/test-jht 私はgoogleが好きです` または `/test-jht 私はgoogleが好きです / わたしはgoogleがすきです`)。');
+        await upsertComment(
+          issue,
+          `error-${event.comment.id}`,
+          '出てほしい文を書いてください (例: `/test-jht 私はgoogleが好きです` または `/test-jht 私はgoogleが好きです / わたしはgoogleがすきです`)。',
+        );
         return output({ action: 'none' });
       }
-      return output({ action: 'test-jht', issue, keys: text.slice(0, 500), last: '', reported: '', expected: '', kind: '', sha: pr.head.sha, comment: event.comment.id });
+      return output({
+        action: 'test-jht',
+        issue,
+        keys: text.slice(0, 500),
+        last: '',
+        reported: '',
+        expected: '',
+        kind: '',
+        sha: pr.head.sha,
+        comment: event.comment.id,
+      });
     }
     const words = rest.trim().split(/\s+/);
     let last = 'enter';
-    if (command === 'test-repro' && ['space', 'enter', 'none'].includes(words.at(-1) ?? '') && words.length > 1) last = words.pop() ?? last;
+    if (
+      command === 'test-repro' &&
+      ['space', 'enter', 'none'].includes(words.at(-1) ?? '') &&
+      words.length > 1
+    )
+      last = words.pop() ?? last;
     const keys = words.join(' ').replace(/^`|`$/g, '');
     if (!isKeys(keys)) {
-      await upsertComment(issue, `error-${event.comment.id}`, `打ったキーを英字で書いてください (例: \`/${command} nihongowohanasu\`)。`);
+      await upsertComment(
+        issue,
+        `error-${event.comment.id}`,
+        `打ったキーを英字で書いてください (例: \`/${command} nihongowohanasu\`)。`,
+      );
       return output({ action: 'none' });
     }
-    return output({ action: command, issue, keys: keys.slice(0, MaxKeys), last, reported: '', expected: '', kind: '', sha: pr.head.sha, comment: event.comment.id });
+    return output({
+      action: command,
+      issue,
+      keys: keys.slice(0, MaxKeys),
+      last,
+      reported: '',
+      expected: '',
+      kind: '',
+      sha: pr.head.sha,
+      comment: event.comment.id,
+    });
   }
 
   if (command === 'jht') {
     const text = rest.trim().replace(/^`|`$/g, '');
     if (!text) {
-      await upsertComment(issue, `error-${event.comment.id}`, `出てほしい文を書いてください (例: \`/jht こんにちは\` または \`/jht 私はgoogleが好きです / わたしはgoogleがすきです\`)。\n\n${Help}`);
+      await upsertComment(
+        issue,
+        `error-${event.comment.id}`,
+        `出てほしい文を書いてください (例: \`/jht こんにちは\` または \`/jht 私はgoogleが好きです / わたしはgoogleがすきです\`)。\n\n${Help}`,
+      );
       return output({ action: 'none' });
     }
     await react('eyes');
-    return output({ action: 'jht', issue, keys: text.slice(0, 500), last: '', reported: '', expected: '', kind: '', comment: event.comment.id });
+    return output({
+      action: 'jht',
+      issue,
+      keys: text.slice(0, 500),
+      last: '',
+      reported: '',
+      expected: '',
+      kind: '',
+      comment: event.comment.id,
+    });
   }
 
   const words = rest.trim().split(/\s+/);
   // ca は末尾の space / enter / none も打つ文字として渡す。最後のキーの指定か本当に打った文字かを bot は見分けられないため (issue #239)
   let last = command === 'ca' ? 'space' : 'enter';
-  if (command === 'repro' && ['space', 'enter', 'none'].includes(words.at(-1) ?? '') && words.length > 1) last = words.pop() ?? last;
+  if (
+    command === 'repro' &&
+    ['space', 'enter', 'none'].includes(words.at(-1) ?? '') &&
+    words.length > 1
+  )
+    last = words.pop() ?? last;
   const keys = words.join(' ').replace(/^`|`$/g, '');
   if (!isKeys(keys)) {
     const example = command === 'ca' ? 'kisha' : 'nihongowohanasu';
-    await upsertComment(issue, `error-${event.comment.id}`, `打ったキーを英字で書いてください (例: \`/${command} ${example}\`)。\n\n${Help}`);
+    await upsertComment(
+      issue,
+      `error-${event.comment.id}`,
+      `打ったキーを英字で書いてください (例: \`/${command} ${example}\`)。\n\n${Help}`,
+    );
     return output({ action: 'none' });
   }
   await react('eyes');
-  return output({ action: command, issue, keys: keys.slice(0, MaxKeys), last, reported: '', expected: '', kind: '', comment: event.comment.id });
+  return output({
+    action: command,
+    issue,
+    keys: keys.slice(0, MaxKeys),
+    last,
+    reported: '',
+    expected: '',
+    kind: '',
+    comment: event.comment.id,
+  });
 }
 
 const code = (text: unknown) => '`' + String(text ?? '').replace(/`/g, 'ˋ') + '`';
@@ -327,25 +479,41 @@ async function report() {
   const keys = process.env.BOT_KEYS;
 
   if (action === 'repro' || action === 'test-repro') {
-    const versions = fs.existsSync(dir) ? fs.readdirSync(dir).filter(f => f.startsWith('repro-')).sort() : [];
+    const versions = fs.existsSync(dir)
+      ? fs
+          .readdirSync(dir)
+          .filter((f) => f.startsWith('repro-'))
+          .sort()
+      : [];
     if (versions.length === 0) {
-      await upsertComment(issue, process.env.BOT_COMMENT_ID ? `repro-${process.env.BOT_COMMENT_ID}` : 'repro', `再現を試せませんでした ([実行結果](${runUrl}))。`);
+      await upsertComment(
+        issue,
+        process.env.BOT_COMMENT_ID ? `repro-${process.env.BOT_COMMENT_ID}` : 'repro',
+        `再現を試せませんでした ([実行結果](${runUrl}))。`,
+      );
       return;
     }
-    const reported = process.env.BOT_REPORTED, expected = process.env.BOT_EXPECTED, kind = process.env.BOT_KIND ?? '';
-    const rows = [], verdicts = [];
+    const reported = process.env.BOT_REPORTED,
+      expected = process.env.BOT_EXPECTED,
+      kind = process.env.BOT_KIND ?? '';
+    const rows = [],
+      verdicts = [];
     let engine = '';
     for (const file of versions) {
       const name = file.replace(/^repro-/, '').replace(/\.json$/, '');
       const r = readJson<ReproResult>(path.join(dir, file));
-      if (!r) { rows.push(`| ${name} | (失敗) |`); continue; }
+      if (!r) {
+        rows.push(`| ${name} | (失敗) |`);
+        continue;
+      }
       if (r.engine) engine = r.engine;
       const result = (r.committed ?? '') + (r.composing ?? '');
       const extra = r.converted && r.converted !== result ? ` / Space: ${code(r.converted)}` : '';
       rows.push(`| ${name} | ${code(result)}${extra} |`);
       if (name === 'main' || name === 'pr') {
         if (expected && (result === expected || r.converted === expected)) verdicts.push('match');
-        else if (reported && (result === reported || r.converted === reported)) verdicts.push('reproduced');
+        else if (reported && (result === reported || r.converted === reported))
+          verdicts.push('reproduced');
         else verdicts.push('different');
       }
     }
@@ -359,31 +527,54 @@ async function report() {
       ...rows,
       '',
     ];
-    if (!hasMozc) lines.push('ℹ️ Mozc の変換ヘルパーが使えなかったため、**漢字変換は検証していません** (日本語 / 英語の判定と入力結果のみ)。');
-    else if (verdict === 'reproduced') lines.push('🔁 報告と同じ結果になりました。**再現しました。**');
-    else if (verdict === 'match') lines.push('✅ 最新のコードでは期待どおりでした。次の版で直っているかもしれません。');
-    else if (expected || reported) lines.push('報告とは違う結果になりました。アプリ・前後の文・学習で変わることがあります。');
-    lines.push('', `<sub>変換エンジン: ${engine || 'なし (判定だけ)'}。${!hasMozc ? '漢字の正しさは未確認。' : ''}[実行結果](${runUrl})</sub>`);
-    await upsertComment(issue, process.env.BOT_COMMENT_ID ? `repro-${process.env.BOT_COMMENT_ID}` : 'repro', lines.join('\n'));
-    if (verdict === 'reproduced') await gh('POST', `/issues/${issue}/labels`, { labels: ['再現済み'] }).catch(() => {});
+    if (!hasMozc)
+      lines.push(
+        'ℹ️ Mozc の変換ヘルパーが使えなかったため、**漢字変換は検証していません** (日本語 / 英語の判定と入力結果のみ)。',
+      );
+    else if (verdict === 'reproduced')
+      lines.push('🔁 報告と同じ結果になりました。**再現しました。**');
+    else if (verdict === 'match')
+      lines.push('✅ 最新のコードでは期待どおりでした。次の版で直っているかもしれません。');
+    else if (expected || reported)
+      lines.push('報告とは違う結果になりました。アプリ・前後の文・学習で変わることがあります。');
+    lines.push(
+      '',
+      `<sub>変換エンジン: ${engine || 'なし (判定だけ)'}。${!hasMozc ? '漢字の正しさは未確認。' : ''}[実行結果](${runUrl})</sub>`,
+    );
+    await upsertComment(
+      issue,
+      process.env.BOT_COMMENT_ID ? `repro-${process.env.BOT_COMMENT_ID}` : 'repro',
+      lines.join('\n'),
+    );
+    if (verdict === 'reproduced')
+      await gh('POST', `/issues/${issue}/labels`, { labels: ['再現済み'] }).catch(() => {});
     return;
   }
 
   if (action === 'ca') {
     const marker = `ca-${process.env.BOT_COMMENT_ID}`;
-    const versions = fs.existsSync(dir) ? fs.readdirSync(dir).filter(f => f.startsWith('repro-')).sort() : [];
-    const results = versions.map(file => ({
+    const versions = fs.existsSync(dir)
+      ? fs
+          .readdirSync(dir)
+          .filter((f) => f.startsWith('repro-'))
+          .sort()
+      : [];
+    const results = versions.map((file) => ({
       name: file.replace(/^repro-/, '').replace(/\.json$/, ''),
       r: readJson<ReproResult>(path.join(dir, file)),
     }));
     // 結果が無い・どれも読めない (dotnet run の失敗など) ときは、Mozc が無いせいにせず実行の失敗として返す
-    if (results.every(v => !v.r)) {
+    if (results.every((v) => !v.r)) {
       await upsertComment(issue, marker, `候補を出せませんでした ([実行結果](${runUrl}))。`);
       return;
     }
-    const engine = results.map(v => v.r?.engine).find(Boolean) ?? '';
-    if (!results.some(v => /Mozc/i.test(v.r?.engine ?? ''))) {
-      await upsertComment(issue, marker, `ℹ️ Mozc の変換ヘルパーが使えなかったため、候補を出せませんでした。\n\n[実行結果](${runUrl})`);
+    const engine = results.map((v) => v.r?.engine).find(Boolean) ?? '';
+    if (!results.some((v) => /Mozc/i.test(v.r?.engine ?? ''))) {
+      await upsertComment(
+        issue,
+        marker,
+        `ℹ️ Mozc の変換ヘルパーが使えなかったため、候補を出せませんでした。\n\n[実行結果](${runUrl})`,
+      );
       return;
     }
     const clauseCell = ({ r }: { r: ReproResult | null }) => {
@@ -393,20 +584,28 @@ async function report() {
       if (r.candidates) return code(r.converted);
       return `変換されず ${code((r.committed ?? '') + (r.composing ?? ''))} と確定しました`;
     };
-    const names = results.map(v => v.name);
+    const names = results.map((v) => v.name);
     const lines = [
       `${code(keys)} を Space で変換しました。`,
       '',
       '| 版 | 文節 |',
       '|---|---|',
-      ...results.map(v => `| ${v.name} | ${clauseCell(v)} |`),
+      ...results.map((v) => `| ${v.name} | ${clauseCell(v)} |`),
       '',
     ];
-    const count = Math.max(0, ...results.map(v => v.r?.candidates?.length ?? 0));
+    const count = Math.max(0, ...results.map((v) => v.r?.candidates?.length ?? 0));
     if (count > 0) {
-      lines.push('最初の文節の候補:', '', `| # | ${names.join(' | ')} |`, `|---|${names.map(() => '---').join('|')}|`);
+      lines.push(
+        '最初の文節の候補:',
+        '',
+        `| # | ${names.join(' | ')} |`,
+        `|---|${names.map(() => '---').join('|')}|`,
+      );
       for (let i = 0; i < count; i++) {
-        const cells = results.map(v => { const c = v.r?.candidates?.[i]; return c == null ? '' : code(c); });
+        const cells = results.map((v) => {
+          const c = v.r?.candidates?.[i];
+          return c == null ? '' : code(c);
+        });
         lines.push(`| ${i + 1} | ${cells.join(' | ')} |`);
       }
       lines.push('');
@@ -419,25 +618,38 @@ async function report() {
   if (action === 'explain' || action === 'test-explain') {
     const text = readText(path.join(dir, 'explain.txt'));
     const head = action === 'test-explain' ? ` (PR ${process.env.BOT_SHA?.slice(0, 7)})` : '';
-    await upsertComment(issue, `explain-${process.env.BOT_COMMENT_ID}`,
-      text ? `${code(keys)} の判定理由 (IME 自動切替)${head}:\n\n\`\`\`\n${text.trim()}\n\`\`\`` : `判定理由を出せませんでした ([実行結果](${runUrl}))。`);
+    await upsertComment(
+      issue,
+      `explain-${process.env.BOT_COMMENT_ID}`,
+      text
+        ? `${code(keys)} の判定理由 (IME 自動切替)${head}:\n\n\`\`\`\n${text.trim()}\n\`\`\``
+        : `判定理由を出せませんでした ([実行結果](${runUrl}))。`,
+    );
     return;
   }
 
   if (action === 'jht' || action === 'test-jht') {
     const data = readJson<JhtResult>(path.join(dir, 'jht.json'));
     if (!data) {
-      await upsertComment(issue, `jht-${process.env.BOT_COMMENT_ID}`, `jht を試せませんでした ([実行結果](${runUrl}))。`);
+      await upsertComment(
+        issue,
+        `jht-${process.env.BOT_COMMENT_ID}`,
+        `jht を試せませんでした ([実行結果](${runUrl}))。`,
+      );
       return;
     }
     if (data.error) {
-      await upsertComment(issue, `jht-${process.env.BOT_COMMENT_ID}`, `⚠️ ${data.error}\n\n漢字を含む文は \`/jht 文 / 読み\` の形で読みを書いてください (例: \`/jht 私はgoogleが好きです / わたしはgoogleがすきです\`)。\n\n[実行結果](${runUrl})`);
+      await upsertComment(
+        issue,
+        `jht-${process.env.BOT_COMMENT_ID}`,
+        `⚠️ ${data.error}\n\n漢字を含む文は \`/jht 文 / 読み\` の形で読みを書いてください (例: \`/jht 私はgoogleが好きです / わたしはgoogleがすきです\`)。\n\n[実行結果](${runUrl})`,
+      );
       return;
     }
     const results = data.results ?? [];
-    const okLive = results.filter(r => r.liveOk).length;
-    const okFirst = results.filter(r => r.firstOk).length;
-    const rows = results.slice(0, 12).map(r => {
+    const okLive = results.filter((r) => r.liveOk).length;
+    const okFirst = results.filter((r) => r.firstOk).length;
+    const rows = results.slice(0, 12).map((r) => {
       const mark = r.liveOk ? '✅' : r.firstOk ? '🔶' : '❌';
       const note = (r.notes ?? []).slice(0, 2).join('; ');
       return `| ${mark} ${code(r.keys)} | ${code(r.entered)} | ${code(r.first)} | ${note || ''} |`;
@@ -463,20 +675,34 @@ async function report() {
     const text = readText(path.join(dir, 'test.txt'));
     const summary = text?.match(/(\d+)\/(\d+) passed/);
     const ok = summary && summary[1] === summary[2];
-    const failures = text ? text.split('\n').filter(l => /FAIL/.test(l)).slice(0, 20).join('\n') : '';
-    await upsertComment(issue, `test-${process.env.BOT_COMMENT_ID}`, [
-      `${ok ? '✅' : '❌'} テスト (${process.env.BOT_SHA?.slice(0, 7)}): ${summary ? `${summary[1]}/${summary[2]} 通過` : '結果を読めませんでした'}`,
-      failures ? `\n\`\`\`\n${failures}\n\`\`\`` : '',
-      `\n[実行結果](${runUrl})`,
-    ].join('\n'));
+    const failures = text
+      ? text
+          .split('\n')
+          .filter((l) => /FAIL/.test(l))
+          .slice(0, 20)
+          .join('\n')
+      : '';
+    await upsertComment(
+      issue,
+      `test-${process.env.BOT_COMMENT_ID}`,
+      [
+        `${ok ? '✅' : '❌'} テスト (${process.env.BOT_SHA?.slice(0, 7)}): ${summary ? `${summary[1]}/${summary[2]} 通過` : '結果を読めませんでした'}`,
+        failures ? `\n\`\`\`\n${failures}\n\`\`\`` : '',
+        `\n[実行結果](${runUrl})`,
+      ].join('\n'),
+    );
     return;
   }
 
   if (action === 'pack') {
     const ok = process.env.BOT_JOB_RESULT === 'success';
-    await upsertComment(issue, `pack-${process.env.BOT_COMMENT_ID}`, ok
-      ? `📦 テスト版の zip を作りました (${process.env.BOT_SHA?.slice(0, 7)})。[実行結果](${runUrl}) の Artifacts の **meltype-pr-${issue}** からダウンロードできます (Windows 用)。`
-      : `❌ zip を作れませんでした。[実行結果](${runUrl})`);
+    await upsertComment(
+      issue,
+      `pack-${process.env.BOT_COMMENT_ID}`,
+      ok
+        ? `📦 テスト版の zip を作りました (${process.env.BOT_SHA?.slice(0, 7)})。[実行結果](${runUrl}) の Artifacts の **meltype-pr-${issue}** からダウンロードできます (Windows 用)。`
+        : `❌ zip を作れませんでした。[実行結果](${runUrl})`,
+    );
   }
 }
 

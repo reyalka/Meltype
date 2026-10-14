@@ -8,7 +8,14 @@
 // Pull Request のコードは動かさない (このスクリプトは main のものを使う)。
 import fs from 'node:fs';
 import { requiredEnv } from './types.ts';
-import type { BotEvent, Comment, ContentFile, GitObject, PullRequest, Signatures } from './types.ts';
+import type {
+  BotEvent,
+  Comment,
+  ContentFile,
+  GitObject,
+  PullRequest,
+  Signatures,
+} from './types.ts';
 
 const api = process.env.GITHUB_API_URL ?? 'https://api.github.com';
 const repo = process.env.GITHUB_REPOSITORY;
@@ -26,12 +33,17 @@ const Maintainers = ['OWNER', 'MEMBER', 'COLLABORATOR'];
 async function gh<T = unknown>(method: string, url: string, body?: unknown): Promise<T | null> {
   const response = await fetch(`${api}/repos/${repo}${url}`, {
     method,
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'meltype-bot' },
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'meltype-bot',
+    },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (response.status === 404) return null;
-  if (!response.ok) throw new Error(`${method} ${url}: ${response.status} ${await response.text()}`);
-  return response.status === 204 ? null : await response.json() as T;
+  if (!response.ok)
+    throw new Error(`${method} ${url}: ${response.status} ${await response.text()}`);
+  return response.status === 204 ? null : ((await response.json()) as T);
 }
 
 const ClaText = [
@@ -47,17 +59,35 @@ const ClaText = [
 async function readSignatures(): Promise<{ signatures: Signatures; sha: string | undefined }> {
   const file = await gh<ContentFile>('GET', `/contents/${File}?ref=${Branch}`);
   if (!file) return { signatures: { signed: [] }, sha: undefined };
-  return { signatures: JSON.parse(Buffer.from(file.content, 'base64').toString('utf8')), sha: file.sha };
+  return {
+    signatures: JSON.parse(Buffer.from(file.content, 'base64').toString('utf8')),
+    sha: file.sha,
+  };
 }
 
-const hasSigned = (signatures: Signatures, userId: number) => signatures.signed.some(s => s.id === userId && s.version >= ClaVersion);
+const hasSigned = (signatures: Signatures, userId: number) =>
+  signatures.signed.some((s) => s.id === userId && s.version >= ClaVersion);
 
 async function ensureBranch() {
   if (await gh('GET', `/branches/${Branch}`)) return;
   // 何も無いブランチを作る (main の履歴とは別。記録のファイルだけを置く)
-  const tree = await gh<GitObject>('POST', '/git/trees', { tree: [{ path: 'README.md', mode: '100644', type: 'blob', content: '# CLA の同意の記録\n\nMeltype の bot (.github/bot/cla.ts) が書きます。手で直さないでください。\n' }] });
+  const tree = await gh<GitObject>('POST', '/git/trees', {
+    tree: [
+      {
+        path: 'README.md',
+        mode: '100644',
+        type: 'blob',
+        content:
+          '# CLA の同意の記録\n\nMeltype の bot (.github/bot/cla.ts) が書きます。手で直さないでください。\n',
+      },
+    ],
+  });
   if (!tree) throw new Error('Failed to create CLA tree');
-  const commit = await gh<GitObject>('POST', '/git/commits', { message: 'CLA の同意の記録を始める', tree: tree.sha, parents: [] });
+  const commit = await gh<GitObject>('POST', '/git/commits', {
+    message: 'CLA の同意の記録を始める',
+    tree: tree.sha,
+    parents: [],
+  });
   if (!commit) throw new Error('Failed to create CLA commit');
   await gh('POST', '/git/refs', { ref: `refs/heads/${Branch}`, sha: commit.sha });
 }
@@ -66,20 +96,24 @@ async function setStatus(sha: string, signed: boolean, login: string) {
   await gh('POST', `/statuses/${sha}`, {
     state: signed ? 'success' : 'failure',
     context: 'CLA',
-    description: signed ? `${login} さんは CLA に同意済み` : `${login} さんの CLA への同意が必要です (コメントで「CLA に同意します」)`,
+    description: signed
+      ? `${login} さんは CLA に同意済み`
+      : `${login} さんの CLA への同意が必要です (コメントで「CLA に同意します」)`,
   });
 }
 
 /** bot の CLA のコメントを書く。append なら、前の文 (同意をお願いした文面) を残して下に足す。 */
 async function upsertComment(issue: number, body: string, append = false) {
-  const comments = await gh<Comment[]>('GET', `/issues/${issue}/comments?per_page=100`) ?? [];
-  const mine = comments.find(c => c.user?.type === 'Bot' && c.body?.includes(Marker));
-  if (mine && append) await gh('PATCH', `/issues/comments/${mine.id}`, { body: `${mine.body}\n\n---\n\n${body}` });
+  const comments = (await gh<Comment[]>('GET', `/issues/${issue}/comments?per_page=100`)) ?? [];
+  const mine = comments.find((c) => c.user?.type === 'Bot' && c.body?.includes(Marker));
+  if (mine && append)
+    await gh('PATCH', `/issues/comments/${mine.id}`, { body: `${mine.body}\n\n---\n\n${body}` });
   else if (mine) await gh('PATCH', `/issues/comments/${mine.id}`, { body: `${Marker}\n${body}` });
   else await gh('POST', `/issues/${issue}/comments`, { body: `${Marker}\n${body}` });
 }
 
-const exempt = (association: string, type: string) => Maintainers.includes(association) || type === 'Bot';
+const exempt = (association: string, type: string) =>
+  Maintainers.includes(association) || type === 'Bot';
 
 /** Pull Request が作られた・更新された: 同意済みか確かめ、まだならお願いのコメントを出す。 */
 async function onPullRequest() {
@@ -96,21 +130,24 @@ async function onPullRequest() {
     return;
   }
   await setStatus(pr.head.sha, false, author.login);
-  await upsertComment(pr.number, [
-    `@${author.login} さん、Pull Request ありがとうございます！`,
-    '',
-    'Meltype は GNU GPL v3 で公開していますが、GPL v3 の条件で使えない方には作者が個別に利用を認めることがあります。これを続けられるように、初めての方には次の貢献者ライセンス同意 (CLA) をお願いしています ([詳しく](https://github.com/yksr-melt/Meltype/blob/main/CONTRIBUTING.md))。',
-    '',
-    ClaText,
-    '',
-    '同意していただける場合は、この Pull Request に次の 1 行だけをコメントしてください (一度同意すれば、次の Pull Request からは不要です)。',
-    '',
-    '```',
-    'CLA に同意します',
-    '```',
-    '',
-    '<sub>英語なら `I agree to the CLA` でも大丈夫です。</sub>',
-  ].join('\n'));
+  await upsertComment(
+    pr.number,
+    [
+      `@${author.login} さん、Pull Request ありがとうございます！`,
+      '',
+      'Meltype は GNU GPL v3 で公開していますが、GPL v3 の条件で使えない方には作者が個別に利用を認めることがあります。これを続けられるように、初めての方には次の貢献者ライセンス同意 (CLA) をお願いしています ([詳しく](https://github.com/yksr-melt/Meltype/blob/main/CONTRIBUTING.md))。',
+      '',
+      ClaText,
+      '',
+      '同意していただける場合は、この Pull Request に次の 1 行だけをコメントしてください (一度同意すれば、次の Pull Request からは不要です)。',
+      '',
+      '```',
+      'CLA に同意します',
+      '```',
+      '',
+      '<sub>英語なら `I agree to the CLA` でも大丈夫です。</sub>',
+    ].join('\n'),
+  );
 }
 
 /** コメント: Pull Request を出した本人が同意の 1 行を書いたら記録する。 */
@@ -138,9 +175,15 @@ async function onComment() {
       sha,
     });
   }
-  await gh('POST', `/issues/comments/${event.comment.id}/reactions`, { content: 'heart' }).catch(() => {});
+  await gh('POST', `/issues/comments/${event.comment.id}/reactions`, { content: 'heart' }).catch(
+    () => {},
+  );
   await setStatus(pr.head.sha, true, user.login);
-  await upsertComment(pr.number, `✅ @${user.login} さん、CLA への同意ありがとうございます。記録しました ([コメント](${event.comment.html_url}))。次の Pull Request からは不要です。`, true);
+  await upsertComment(
+    pr.number,
+    `✅ @${user.login} さん、CLA への同意ありがとうございます。記録しました ([コメント](${event.comment.html_url}))。次の Pull Request からは不要です。`,
+    true,
+  );
 }
 
 try {

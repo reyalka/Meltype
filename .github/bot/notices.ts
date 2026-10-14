@@ -28,19 +28,25 @@ const HeaderLines = 8;
 async function gh<T = unknown>(method: string, url: string, body?: unknown): Promise<T | null> {
   const response = await fetch(url.startsWith('http') ? url : `${api}/repos/${repo}${url}`, {
     method,
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'meltype-bot' },
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'meltype-bot',
+    },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (response.status === 404) return null;
-  if (!response.ok) throw new Error(`${method} ${url}: ${response.status} ${await response.text()}`);
-  return response.status === 204 ? null : await response.json() as T;
+  if (!response.ok)
+    throw new Error(`${method} ${url}: ${response.status} ${await response.text()}`);
+  return response.status === 204 ? null : ((await response.json()) as T);
 }
 
 /** Pull Request で変わったファイル (patch つき)。 */
 async function changedFiles(number: number) {
   const files: ChangedFile[] = [];
   for (let page = 1; page <= 30; page++) {
-    const batch = await gh<ChangedFile[]>('GET', `/pulls/${number}/files?per_page=100&page=${page}`) ?? [];
+    const batch =
+      (await gh<ChangedFile[]>('GET', `/pulls/${number}/files?per_page=100&page=${page}`)) ?? [];
     files.push(...batch);
     if (batch.length < 100) break;
   }
@@ -48,13 +54,20 @@ async function changedFiles(number: number) {
 }
 
 /** patch の足された行 (先頭の + を外す)。 */
-const addedLines = (patch: string | undefined) => (patch ?? '').split('\n').filter(l => l.startsWith('+') && !l.startsWith('+++')).map(l => l.slice(1));
+const addedLines = (patch: string | undefined) =>
+  (patch ?? '')
+    .split('\n')
+    .filter((l) => l.startsWith('+') && !l.startsWith('+++'))
+    .map((l) => l.slice(1));
 
-const copyrightOf = (line: string) => /copyright\s*(\(c\)|©)?\s*\d{4}/i.test(line) ? line.replace(/^[\s#/;*!<>-]*(rem\s+)?/i, '').trim() : null;
+const copyrightOf = (line: string) =>
+  /copyright\s*(\(c\)|©)?\s*\d{4}/i.test(line)
+    ? line.replace(/^[\s#/;*!<>-]*(rem\s+)?/i, '').trim()
+    : null;
 
 function check(files: ChangedFile[], author: string) {
   const findings = [];
-  const isOwner = Owners.some(o => o.toLowerCase() === author.toLowerCase());
+  const isOwner = Owners.some((o) => o.toLowerCase() === author.toLowerCase());
   for (const file of files) {
     if (!SourceFile.test(file.filename)) continue;
     const added = addedLines(file.patch);
@@ -63,23 +76,34 @@ function check(files: ChangedFile[], author: string) {
       if (!file.patch) continue;
       const head = added.slice(0, HeaderLines);
       const problems = [];
-      if (!head.some(l => l.includes('SPDX-License-Identifier'))) problems.push('`SPDX-License-Identifier: GPL-3.0-or-later` がありません');
-      const copyright = head.map(copyrightOf).find(c => c);
+      if (!head.some((l) => l.includes('SPDX-License-Identifier')))
+        problems.push('`SPDX-License-Identifier: GPL-3.0-or-later` がありません');
+      const copyright = head.map(copyrightOf).find((c) => c);
       if (!copyright) problems.push('`Copyright (C) <年> <あなたの名前>` がありません');
-      else if (!isOwner && OwnerName.test(copyright)) problems.push(`著作権の行が作者の名義になっています (\`${copyright}\`)。あなたの名前にしてください`);
+      else if (!isOwner && OwnerName.test(copyright))
+        problems.push(
+          `著作権の行が作者の名義になっています (\`${copyright}\`)。あなたの名前にしてください`,
+        );
       if (problems.length) findings.push({ file: file.filename, problems });
-    }
-    else if (!isOwner) {
+    } else if (!isOwner) {
       // 既存のファイルに、作者の名義の著作権の行を足していないか
-      const copyright = added.map(copyrightOf).find(c => c && OwnerName.test(c));
-      if (copyright) findings.push({ file: file.filename, problems: [`作者の名義の著作権の行を足しています (\`${copyright}\`)。あなたが書いた部分なら、あなたの名前の行を足してください`] });
+      const copyright = added.map(copyrightOf).find((c) => c && OwnerName.test(c));
+      if (copyright)
+        findings.push({
+          file: file.filename,
+          problems: [
+            `作者の名義の著作権の行を足しています (\`${copyright}\`)。あなたが書いた部分なら、あなたの名前の行を足してください`,
+          ],
+        });
     }
   }
   return findings;
 }
 
 function message(findings: Finding[], author: string) {
-  const list = findings.map(f => `- \`${f.file}\`\n${f.problems.map(p => `  - ${p}`).join('\n')}`).join('\n');
+  const list = findings
+    .map((f) => `- \`${f.file}\`\n${f.problems.map((p) => `  - ${p}`).join('\n')}`)
+    .join('\n');
   return [
     `@${author} さん、ソースファイルの先頭のライセンス・著作権の表記を確認させてください。`,
     '',
@@ -98,11 +122,14 @@ function message(findings: Finding[], author: string) {
 }
 
 async function upsert(number: number, body: string | null) {
-  const comments = await gh<Comment[]>('GET', `/issues/${number}/comments?per_page=100`) ?? [];
-  const mine = comments.find(c => c.user?.type === 'Bot' && c.body?.includes(Marker));
+  const comments = (await gh<Comment[]>('GET', `/issues/${number}/comments?per_page=100`)) ?? [];
+  const mine = comments.find((c) => c.user?.type === 'Bot' && c.body?.includes(Marker));
   if (!body) {
     // 直った: 前に指摘していたら、直ったことを書く (指摘が無かったなら何もしない)
-    if (mine && !mine.body?.includes('✅')) await gh('PATCH', `/issues/comments/${mine.id}`, { body: `${Marker}\n✅ ライセンス・著作権の表記を確認しました。ありがとうございます。` });
+    if (mine && !mine.body?.includes('✅'))
+      await gh('PATCH', `/issues/comments/${mine.id}`, {
+        body: `${Marker}\n✅ ライセンス・著作権の表記を確認しました。ありがとうございます。`,
+      });
     return;
   }
   if (mine) await gh('PATCH', `/issues/comments/${mine.id}`, { body: `${Marker}\n${body}` });
@@ -121,16 +148,76 @@ async function main() {
 
 /** node .github/bot/notices.ts --self-test: 判定だけを確かめる (GitHub には何も書かない)。 */
 function selfTest() {
-  const file = (filename: string, status: string, lines: string[]) => ({ filename, status, patch: lines.map(l => `+${l}`).join('\n') });
+  const file = (filename: string, status: string, lines: string[]) => ({
+    filename,
+    status,
+    patch: lines.map((l) => `+${l}`).join('\n'),
+  });
   const cases: [string, ChangedFile[], string, number][] = [
-    ['他の人が Yukishiro 名義', [file('a.cs', 'added', ['// SPDX-License-Identifier: GPL-3.0-or-later', '// Copyright (C) 2026 Yukishiro'])], 'someone', 1],
-    ['他の人が自分の名前', [file('a.cs', 'added', ['// SPDX-License-Identifier: GPL-3.0-or-later', '// Copyright (C) 2026 someone'])], 'someone', 0],
-    ['作者が Yukishiro 名義', [file('a.cs', 'added', ['// SPDX-License-Identifier: GPL-3.0-or-later', '// Copyright (C) 2026 Yukishiro'])], 'yksr-melt', 0],
+    [
+      '他の人が Yukishiro 名義',
+      [
+        file('a.cs', 'added', [
+          '// SPDX-License-Identifier: GPL-3.0-or-later',
+          '// Copyright (C) 2026 Yukishiro',
+        ]),
+      ],
+      'someone',
+      1,
+    ],
+    [
+      '他の人が自分の名前',
+      [
+        file('a.cs', 'added', [
+          '// SPDX-License-Identifier: GPL-3.0-or-later',
+          '// Copyright (C) 2026 someone',
+        ]),
+      ],
+      'someone',
+      0,
+    ],
+    [
+      '作者が Yukishiro 名義',
+      [
+        file('a.cs', 'added', [
+          '// SPDX-License-Identifier: GPL-3.0-or-later',
+          '// Copyright (C) 2026 Yukishiro',
+        ]),
+      ],
+      'yksr-melt',
+      0,
+    ],
     ['表記が無い', [file('b.sh', 'added', ['#!/bin/bash', 'echo hi'])], 'yksr-melt', 1],
-    ['shebang の後に表記', [file('b.sh', 'added', ['#!/bin/bash', '# SPDX-License-Identifier: GPL-3.0-or-later', '# Copyright (C) 2026 someone'])], 'someone', 0],
+    [
+      'shebang の後に表記',
+      [
+        file('b.sh', 'added', [
+          '#!/bin/bash',
+          '# SPDX-License-Identifier: GPL-3.0-or-later',
+          '# Copyright (C) 2026 someone',
+        ]),
+      ],
+      'someone',
+      0,
+    ],
     ['ソースでないファイル', [file('docs/a.md', 'added', ['# title'])], 'someone', 0],
-    ['既存のファイルに Yukishiro 名義を足した', [file('c.ps1', 'modified', ['# Copyright (C) 2026 Yukishiro'])], 'someone', 1],
-    ['雪代 の名義', [file('d.swift', 'added', ['// SPDX-License-Identifier: GPL-3.0-or-later', '// Copyright (C) 2026 雪代'])], 'someone', 1],
+    [
+      '既存のファイルに Yukishiro 名義を足した',
+      [file('c.ps1', 'modified', ['# Copyright (C) 2026 Yukishiro'])],
+      'someone',
+      1,
+    ],
+    [
+      '雪代 の名義',
+      [
+        file('d.swift', 'added', [
+          '// SPDX-License-Identifier: GPL-3.0-or-later',
+          '// Copyright (C) 2026 雪代',
+        ]),
+      ],
+      'someone',
+      1,
+    ],
   ];
   let failed = 0;
   for (const [name, files, author, expected] of cases) {

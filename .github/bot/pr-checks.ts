@@ -12,13 +12,26 @@ import type { BotEvent, Issue, ExpectResult, QualityCase, QualityResult } from '
 
 const api = process.env.GITHUB_API_URL ?? 'https://api.github.com';
 const repo = process.env.GITHUB_REPOSITORY;
-const summary = (text: string) => fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY ?? '/dev/stdout', text + '\n');
-const code = (text: unknown) => '`' + String(text ?? '').replace(/`/g, 'ˋ').replace(/\|/g, '\\|') + '`';
-const cell = (text: unknown) => String(text ?? '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
+const summary = (text: string) =>
+  fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY ?? '/dev/stdout', text + '\n');
+const code = (text: unknown) =>
+  '`' +
+  String(text ?? '')
+    .replace(/`/g, 'ˋ')
+    .replace(/\|/g, '\\|') +
+  '`';
+const cell = (text: unknown) =>
+  String(text ?? '')
+    .replace(/\|/g, '\\|')
+    .replace(/\n/g, ' ');
 
 async function gh(url: string): Promise<Issue | null> {
   const response = await fetch(`${api}/repos/${repo}${url}`, {
-    headers: { Authorization: `Bearer ${process.env.GITHUB_TOKEN}`, Accept: 'application/vnd.github+json', 'User-Agent': 'meltype-bot' },
+    headers: {
+      Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'meltype-bot',
+    },
   });
   return response.ok ? response.json() : null;
 }
@@ -45,21 +58,29 @@ async function cases(output: string) {
   for (const line of section.split('\n')) {
     const match = line.replace(/^\s*[-*]\s*/, '').match(/^(.+?)\s*(?:→|->)\s*(.+)$/);
     if (!match || line.trim().startsWith('<!--')) continue;
-    list.push({ typed: match[1].replace(/`/g, '').trim(), expected: match[2].replace(/`/g, '').trim(), source: '確かめること' });
+    list.push({
+      typed: match[1].replace(/`/g, '').trim(),
+      expected: match[2].replace(/`/g, '').trim(),
+      source: '確かめること',
+    });
   }
 
   // 「Fixes #12」などで閉じる Issue が誤判定の報告なら、その報告の「打ったもの → 期待した結果」
-  for (const [, number] of body.matchAll(/\b(?:fix(?:e[sd])?|close[sd]?|resolve[sd]?)\s+#(\d+)/gi)) {
+  for (const [, number] of body.matchAll(
+    /\b(?:fix(?:e[sd])?|close[sd]?|resolve[sd]?)\s+#(\d+)/gi,
+  )) {
     const issue = await gh(`/issues/${number}`);
-    if (!issue || !issue.labels.some(l => l.name === '誤判定')) continue;
+    if (!issue || !issue.labels.some((l) => l.name === '誤判定')) continue;
     // 報告の欄がコードの書き方 (`gameover`) で書かれていたら、「確かめること」の行と同じくバッククォートを外す
     const plain = (text: string) => text.replace(/^`+|`+$/g, '').trim();
-    const typed = plain(formField(issue.body, '打ったもの')), expected = plain(formField(issue.body, '期待した結果'));
-    if (/^[\x20-\x7e]+$/.test(typed) && expected) list.push({ typed, expected, source: `#${number}` });
+    const typed = plain(formField(issue.body, '打ったもの')),
+      expected = plain(formField(issue.body, '期待した結果'));
+    if (/^[\x20-\x7e]+$/.test(typed) && expected)
+      list.push({ typed, expected, source: `#${number}` });
   }
 
-  fs.writeFileSync(output, list.map(c => `${c.typed}\t${c.expected}`).join('\n') + '\n');
-  fs.writeFileSync(output + '.sources.json', JSON.stringify(list.map(c => c.source)));
+  fs.writeFileSync(output, list.map((c) => `${c.typed}\t${c.expected}`).join('\n') + '\n');
+  fs.writeFileSync(output + '.sources.json', JSON.stringify(list.map((c) => c.source)));
   fs.appendFileSync(process.env.GITHUB_OUTPUT ?? '/dev/null', `count=${list.length}\n`);
   console.log(`確かめる例: ${list.length} 個`);
 }
@@ -67,12 +88,24 @@ async function cases(output: string) {
 function expect(resultFile: string) {
   const results: ExpectResult[] = JSON.parse(fs.readFileSync(resultFile, 'utf8'));
   let sources: string[] = [];
-  try { sources = JSON.parse(fs.readFileSync(resultFile.replace(/\.json$/, '.txt.sources.json'), 'utf8')); } catch { /* 無くてもよい */ }
-  const failed = results.filter(r => !r.ok).length;
+  try {
+    sources = JSON.parse(
+      fs.readFileSync(resultFile.replace(/\.json$/, '.txt.sources.json'), 'utf8'),
+    );
+  } catch {
+    /* 無くてもよい */
+  }
+  const failed = results.filter((r) => !r.ok).length;
   summary(`## 報告・確かめることの再現 ${failed === 0 ? '✅' : '❌'}\n`);
   summary('| | 出どころ | 入力 | 期待 | Pull Request の結果 | 比べ方 |\n|---|---|---|---|---|---|');
-  results.forEach((r, i) => summary(`| ${r.ok ? '✅' : '❌'} | ${cell(sources[i] ?? '')} | ${code(r.typed)} | ${cell(r.expected)} | ${cell(r.actual)} | ${cell(r.kind)} |`));
-  summary('\n<sub>テスト用の変換エンジンなので漢字にはしません。期待に漢字が入っている例は、日本語 / 英語の分かれ方だけを比べます。</sub>');
+  results.forEach((r, i) =>
+    summary(
+      `| ${r.ok ? '✅' : '❌'} | ${cell(sources[i] ?? '')} | ${code(r.typed)} | ${cell(r.expected)} | ${cell(r.actual)} | ${cell(r.kind)} |`,
+    ),
+  );
+  summary(
+    '\n<sub>テスト用の変換エンジンなので漢字にはしません。期待に漢字が入っている例は、日本語 / 英語の分かれ方だけを比べます。</sub>',
+  );
   if (failed > 0) {
     console.error(`${failed} 個の例が期待どおりになりませんでした`);
     process.exitCode = 1;
@@ -82,16 +115,23 @@ function expect(resultFile: string) {
 function compare(baseFile: string, prFile: string) {
   const pr: QualityResult = JSON.parse(fs.readFileSync(prFile, 'utf8'));
   let base: QualityResult | null = null;
-  try { base = JSON.parse(fs.readFileSync(baseFile, 'utf8')); } catch { /* main に --eval-json がまだ無い */ }
-  const baseCases = new Map((base?.cases ?? []).map(c => [c.key, c]));
-  const broken = pr.cases.filter(c => !c.ok && baseCases.get(c.key)?.ok === true);
-  const fixed = pr.cases.filter(c => c.ok && baseCases.get(c.key)?.ok === false);
-  const added = base ? pr.cases.filter(c => !baseCases.has(c.key)) : [];
-  const addedFailing = added.filter(c => !c.ok);
-  const rate = (r: QualityResult) => `${r.pass}/${r.total} (${(r.pass / r.total * 100).toFixed(1)}%)`;
+  try {
+    base = JSON.parse(fs.readFileSync(baseFile, 'utf8'));
+  } catch {
+    /* main に --eval-json がまだ無い */
+  }
+  const baseCases = new Map((base?.cases ?? []).map((c) => [c.key, c]));
+  const broken = pr.cases.filter((c) => !c.ok && baseCases.get(c.key)?.ok === true);
+  const fixed = pr.cases.filter((c) => c.ok && baseCases.get(c.key)?.ok === false);
+  const added = base ? pr.cases.filter((c) => !baseCases.has(c.key)) : [];
+  const addedFailing = added.filter((c) => !c.ok);
+  const rate = (r: QualityResult) =>
+    `${r.pass}/${r.total} (${((r.pass / r.total) * 100).toFixed(1)}%)`;
 
   summary(`## 精度の比較 ${broken.length + addedFailing.length === 0 ? '✅' : '❌'}\n`);
-  summary(`| | 品質テスト |\n|---|---|\n| main | ${base ? rate(base) : '(比べられません)'} |\n| Pull Request | ${rate(pr)} |\n`);
+  summary(
+    `| | 品質テスト |\n|---|---|\n| main | ${base ? rate(base) : '(比べられません)'} |\n| Pull Request | ${rate(pr)} |\n`,
+  );
   const list = (title: string, items: QualityCase[]) => {
     if (items.length === 0) return;
     summary(`### ${title} (${items.length})\n`);
@@ -102,7 +142,10 @@ function compare(baseFile: string, prFile: string) {
   list('❌ 新しく外れた例', broken);
   list('❌ 新しく足した例で外れたもの', addedFailing);
   list('✅ 直った例', fixed);
-  list('➕ 新しく足した例', added.filter(c => c.ok));
+  list(
+    '➕ 新しく足した例',
+    added.filter((c) => c.ok),
+  );
   if (broken.length + addedFailing.length > 0) {
     console.error(`新しく外れた例が ${broken.length + addedFailing.length} 個あります`);
     process.exitCode = 1;
