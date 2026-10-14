@@ -37,13 +37,28 @@ jobs:
           echo "$files"
           if grep -q '^dictionaries/' <<< "$files"; then echo "dictionaries=true" >> "$GITHUB_OUTPUT"; fi
           if grep -qE '^(dictionaries/|src/Meltype\.Core/|src/Meltype\.Core\.Tests/)' <<< "$files"; then echo "core=true" >> "$GITHUB_OUTPUT"; fi
-      # 表記の bot (notices.yml) の判定を確かめる (GitHub には何も書かない)
+
+  bot:
+    name: Bot / format・lint・typecheck・test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: .github/bot
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '24'
-      - run: node .github/bot/notices.ts --self-test
-      # 再現 bot のフォーム読み取りと結果の判定 (GitHub API はスタブ)
-      - run: node --test .github/bot/meltype-bot.test.ts
+          cache: npm
+          cache-dependency-path: .github/bot/package-lock.json
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
 
   dictionaries:
     name: 辞書の形式

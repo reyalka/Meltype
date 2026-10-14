@@ -6,7 +6,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { test } from 'node:test';
+import { test } from 'vite-plus/test';
+import { runBot } from './test-utils.ts';
 
 const bot = new URL('./meltype-bot.ts', import.meta.url).href;
 
@@ -121,7 +122,7 @@ function reproduce({
   }
 }
 
-await test('issue #686: inline code in reported text is reproduced', () => {
+test('issue #686: inline code in reported text is reproduced', () => {
   const r = reproduce({
     reported: '`エン湿地フィcation`',
     expected: '`enshittification`',
@@ -133,7 +134,7 @@ await test('issue #686: inline code in reported text is reproduced', () => {
   assert.equal(r.reproducedLabel, true);
 });
 
-await test('inline code in typed and expected text is accepted and matches', () => {
+test('inline code in typed and expected text is accepted and matches', () => {
   const r = reproduce({
     typed: '`enshittification`',
     reported: '`エン湿地フィcation`',
@@ -145,7 +146,7 @@ await test('inline code in typed and expected text is accepted and matches', () 
   assert.equal(r.reproducedLabel, false);
 });
 
-await test('plain form values still reproduce', () => {
+test('plain form values still reproduce', () => {
   assert.match(
     reproduce({
       reported: 'エン湿地フィcation',
@@ -156,7 +157,7 @@ await test('plain form values still reproduce', () => {
   );
 });
 
-await test('PR #649: different Japanese strings never match via empty ASCII words', () => {
+test('PR #649: different Japanese strings never match via empty ASCII words', () => {
   const r = reproduce({
     typed: 'yahoyaho',
     reported: '`谷保谷保`',
@@ -167,7 +168,7 @@ await test('PR #649: different Japanese strings never match via empty ASCII word
   assert.doesNotMatch(r.comment, /期待どおり/);
 });
 
-await test('different strings sharing ASCII words remain different', () => {
+test('different strings sharing ASCII words remain different', () => {
   const r = reproduce({
     reported: '`別のcation`',
     expected: '`期待cation`',
@@ -177,7 +178,7 @@ await test('different strings sharing ASCII words remain different', () => {
   assert.equal(r.reproducedLabel, false);
 });
 
-await test('converted result is still compared exactly', () => {
+test('converted result is still compared exactly', () => {
   assert.match(
     reproduce({
       reported: '`谷保谷保`',
@@ -198,7 +199,7 @@ await test('converted result is still compared exactly', () => {
   );
 });
 
-await test('spaces inside code delimiters are preserved', () => {
+test('spaces inside code delimiters are preserved', () => {
   const r = reproduce({
     reported: '`エン湿地フィcation `',
     expected: '`enshittification`',
@@ -208,16 +209,70 @@ await test('spaces inside code delimiters are preserved', () => {
   assert.match(r.comment, /報告とは違う結果/);
 });
 
-await test('multiple backtick delimiters preserve a literal backtick', () => {
+test('multiple backtick delimiters preserve a literal backtick', () => {
   const r = reproduce({ reported: '``a`b``', expected: '`other`', actual: 'a`b' });
   assert.equal(r.parsed.reported, 'a`b');
   assert.match(r.comment, /再現しました/);
 });
 
-await test('unpaired backticks and prose are not stripped', () => {
+test('unpaired backticks and prose are not stripped', () => {
   for (const text of ['`value', 'value`', '`value``', '`a` and `b`']) {
     const r = reproduce({ reported: text, expected: 'other', actual: 'value' });
     assert.equal(r.parsed.reported, text);
     assert.match(r.comment, /報告とは違う結果/);
   }
+});
+
+test('report distinguishes missing results from a different output', () => {
+  const r = runBot('meltype-bot.ts', {
+    args: ['report'],
+    env: { BOT_ACTION: 'repro', BOT_ISSUE: '7', BOT_RESULTS: '.' },
+    mocks: [
+      { path: '/issues/7/comments?per_page=100', data: [] },
+      { path: '/issues/7/comments', method: 'POST', data: {} },
+    ],
+  });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.calls.at(-1)?.body?.body ?? '', /再現を試せませんでした/);
+});
+
+test('parse refuses a PR test command from a non-maintainer', () => {
+  const r = runBot('meltype-bot.ts', {
+    args: ['parse'],
+    event: {
+      issue: { number: 7, pull_request: {} },
+      comment: { id: 9, body: '/test', user: { type: 'User' }, author_association: 'NONE' },
+    },
+    mocks: [
+      { path: '/issues/7/comments?per_page=100', data: [] },
+      { path: '/issues/7/comments', method: 'POST', data: {} },
+    ],
+  });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.calls.at(-1)?.body?.body ?? '', /メンテナーだけ/);
+  assert.match(r.files['output.txt'], /\nnone\n/);
+  assert.equal(
+    r.calls.some((c) => c.url.includes('/pulls/')),
+    false,
+  );
+});
+
+test('ca preserves a trailing space word as input rather than a key option', () => {
+  const r = runBot('meltype-bot.ts', {
+    args: ['parse'],
+    event: {
+      issue: { number: 7 },
+      comment: {
+        id: 9,
+        body: '/ca kisha space',
+        user: { type: 'User' },
+        author_association: 'NONE',
+      },
+    },
+    mocks: [{ path: '/issues/comments/9/reactions', method: 'POST', data: {} }],
+  });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.files['output.txt'], /\nca\n/);
+  assert.match(r.files['output.txt'], /\nkisha space\n/);
+  assert.match(r.files['output.txt'], /\nspace\n/);
 });
