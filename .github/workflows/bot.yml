@@ -83,8 +83,11 @@ jobs:
         with:
           app-id: ${{ vars.BOT_APP_ID }}
           private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
       - id: parse
-        run: node .github/bot/meltype-bot.mjs parse
+        run: node .github/bot/meltype-bot.ts parse
         env:
           GITHUB_TOKEN: ${{ steps.app.outputs.token || github.token }}
 
@@ -259,7 +262,10 @@ jobs:
         with:
           app-id: ${{ vars.BOT_APP_ID }}
           private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
-      - run: node .github/bot/meltype-bot.mjs report
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - run: node .github/bot/meltype-bot.ts report
         env:
           GITHUB_TOKEN: ${{ steps.app.outputs.token || github.token }}
           BOT_ACTION: ${{ needs.parse.outputs.action }}

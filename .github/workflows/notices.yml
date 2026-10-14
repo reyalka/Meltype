@@ -1,4 +1,4 @@
-# ソースファイルの先頭のライセンス・著作権の表記を確かめる bot (.github/bot/notices.mjs)。
+# ソースファイルの先頭のライセンス・著作権の表記を確かめる bot (.github/bot/notices.ts)。
 #   新しく足したソースファイルに SPDX と Copyright の行があるか、作者以外が Yukishiro 名義で書いていないかを見て、
 #   見つけたら Pull Request にコメントする。
 # pull_request_target は書き込みの権限を持つので、Pull Request のコードはチェックアウトしない
@@ -28,6 +28,9 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           sparse-checkout: .github/bot
           persist-credentials: false
-      - run: node .github/bot/notices.mjs
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - run: node .github/bot/notices.ts
         env:
           GITHUB_TOKEN: ${{ github.token }}

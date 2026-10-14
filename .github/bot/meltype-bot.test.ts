@@ -8,9 +8,9 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 
-const bot = new URL('./meltype-bot.mjs', import.meta.url).href;
+const bot = new URL('./meltype-bot.ts', import.meta.url).href;
 
-function reproduce({ typed = 'enshittification', reported, expected, actual, converted }) {
+function reproduce({ typed = 'enshittification', reported, expected, actual, converted }: { typed?: string; reported: string; expected: string; actual: string; converted?: string }) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'meltype-bot-test-'));
   try {
     const event = path.join(dir, 'event.json');
@@ -30,7 +30,7 @@ function reproduce({ typed = 'enshittification', reported, expected, actual, con
       GITHUB_API_URL: 'https://api.invalid', GITHUB_SERVER_URL: 'https://github.invalid',
       GITHUB_RUN_ID: '1', BOT_RESULTS: dir,
     };
-    function run(mode, extra = {}) {
+    function run(mode: string, extra: Record<string, string> = {}) {
       const stub = `
         import fs from 'node:fs';
         globalThis.fetch = async (url, options) => {
@@ -48,7 +48,7 @@ function reproduce({ typed = 'enshittification', reported, expected, actual, con
       assert.equal(result.status, 0, result.stderr || String(result.error ?? ''));
     }
     run('parse');
-    const parsed = {};
+    const parsed: Record<string, string> = {};
     const lines = fs.readFileSync(output, 'utf8').split('\n');
     for (let i = 0; i < lines.length; i++) {
       const match = lines[i].match(/^(\w+)<<(\S+)$/);
@@ -67,10 +67,10 @@ function reproduce({ typed = 'enshittification', reported, expected, actual, con
     }));
     const reportEnv = Object.fromEntries(Object.entries(parsed).map(([k, v]) => [`BOT_${k.toUpperCase()}`, v]));
     run('report', reportEnv);
-    const calls = fs.readFileSync(requests, 'utf8').trim().split('\n').map(line => JSON.parse(line));
+    const calls = fs.readFileSync(requests, 'utf8').trim().split('\n').map(line => JSON.parse(line) as { url: string; method: string; body?: { body?: string; labels?: string[] } });
     return {
       parsed,
-      comment: calls.find(r => r.method === 'POST' && r.url.endsWith('/comments')).body.body,
+      comment: calls.find(r => r.method === 'POST' && r.url.endsWith('/comments'))?.body?.body ?? '',
       reproducedLabel: calls.some(r => r.body?.labels?.includes('再現済み')),
     };
   } finally {

@@ -5,22 +5,23 @@
 //   - 名前を公開にしてくださった方 (privacyLevel が PUBLIC) だけを載せる。非公開の方は載せない
 //   - 今は応援をやめた方も、一度応援してくださった方として載せる (古い順)
 //   - README の <!-- sponsors:start --> と <!-- sponsors:end --> の間を書き換える
-// node .github/bot/sponsors.mjs            … README.md を書き換える (変わらなければそのまま)
-// node .github/bot/sponsors.mjs --self-test … 書き換えの形だけを確かめる (GitHub には問い合わせない)
+// node .github/bot/sponsors.ts            … README.md を書き換える (変わらなければそのまま)
+// node .github/bot/sponsors.ts --self-test … 書き換えの形だけを確かめる (GitHub には問い合わせない)
 import fs from 'node:fs';
+import type { SponsorsData } from './types.ts';
 
 const Start = '<!-- sponsors:start -->';
 const End = '<!-- sponsors:end -->';
 const Login = process.env.SPONSORS_LOGIN ?? 'yksr-melt';
 const SponsorUrl = `https://github.com/sponsors/${Login}`;
 
-async function graphql(query, variables) {
+async function graphql(query: string, variables: { login: string; after: string | null }) {
   const response = await fetch(`${process.env.GITHUB_GRAPHQL_URL ?? 'https://api.github.com/graphql'}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${process.env.GITHUB_TOKEN}`, 'Content-Type': 'application/json', 'User-Agent': 'meltype-bot' },
     body: JSON.stringify({ query, variables }),
   });
-  const result = await response.json();
+  const result = await response.json() as { data: SponsorsData; errors?: unknown };
   if (!response.ok || result.errors) throw new Error(`GraphQL: ${response.status} ${JSON.stringify(result.errors ?? result)}`);
   return result.data;
 }
@@ -35,8 +36,8 @@ async function publicSponsors() {
       }
     }
   }`;
-  const logins = [];
-  let after = null;
+  const logins: string[] = [];
+  let after: string | null = null;
   for (let page = 0; page < 20; page++) {
     const data = await graphql(query, { login: Login, after });
     const sponsorships = data.user?.sponsorshipsAsMaintainer;
@@ -52,7 +53,7 @@ async function publicSponsors() {
 }
 
 /** <!-- sponsors:start --> と <!-- sponsors:end --> の間に入れる HTML。 */
-function render(logins) {
+function render(logins: string[]) {
   if (logins.length === 0) {
     return `<p align="center">\n  <sub>まだいません。最初の 1 人を募集中です！ → <a href="${SponsorUrl}">GitHub Sponsors</a></sub>\n</p>`;
   }
@@ -62,7 +63,7 @@ function render(logins) {
 }
 
 /** README の印の間を入れ替えたもの。印が無ければ例外。 */
-function replace(readme, html) {
+function replace(readme: string, html: string) {
   const start = readme.indexOf(Start);
   const end = readme.indexOf(End);
   if (start < 0 || end < start) throw new Error(`README に ${Start} と ${End} がありません`);

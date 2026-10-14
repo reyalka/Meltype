@@ -1,4 +1,4 @@
-# 貢献者ライセンス同意 (CLA) の bot。初めて Pull Request を出した人に、コメントで同意してもらう (.github/bot/cla.mjs)。
+# 貢献者ライセンス同意 (CLA) の bot。初めて Pull Request を出した人に、コメントで同意してもらう (.github/bot/cla.ts)。
 # pull_request_target は書き込みの権限を持つので、Pull Request のコードはチェックアウトしない (main の bot のスクリプトだけを使う)。
 name: cla
 
@@ -27,6 +27,9 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           sparse-checkout: .github/bot
           persist-credentials: false
-      - run: node .github/bot/cla.mjs
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - run: node .github/bot/cla.ts
         env:
           GITHUB_TOKEN: ${{ github.token }}

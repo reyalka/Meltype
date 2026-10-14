@@ -8,6 +8,8 @@
 // 見つけたら Pull Request にコメントする (直ったらコメントを「直りました」に書き換える)。
 // Pull Request のコードは動かさない。GitHub の API で、変更 (patch) の足された行を文字列として読むだけ。
 import fs from 'node:fs';
+import { requiredEnv } from './types.ts';
+import type { BotEvent, ChangedFile, Comment, Finding } from './types.ts';
 
 const api = process.env.GITHUB_API_URL ?? 'https://api.github.com';
 const repo = process.env.GITHUB_REPOSITORY;
@@ -23,7 +25,7 @@ const OwnerName = /yukishiro|雪代|ゆきしろ|yksr/i;
 /** 先頭の何行の中に表記があればよいか (shebang やエンコーディングの行の後に書くこともあるので少し余裕を持たせる) */
 const HeaderLines = 8;
 
-async function gh(method, url, body) {
+async function gh<T = unknown>(method: string, url: string, body?: unknown): Promise<T | null> {
   const response = await fetch(url.startsWith('http') ? url : `${api}/repos/${repo}${url}`, {
     method,
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'meltype-bot' },
@@ -31,14 +33,14 @@ async function gh(method, url, body) {
   });
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`${method} ${url}: ${response.status} ${await response.text()}`);
-  return response.status === 204 ? null : response.json();
+  return response.status === 204 ? null : await response.json() as T;
 }
 
 /** Pull Request で変わったファイル (patch つき)。 */
-async function changedFiles(number) {
-  const files = [];
+async function changedFiles(number: number) {
+  const files: ChangedFile[] = [];
   for (let page = 1; page <= 30; page++) {
-    const batch = await gh('GET', `/pulls/${number}/files?per_page=100&page=${page}`) ?? [];
+    const batch = await gh<ChangedFile[]>('GET', `/pulls/${number}/files?per_page=100&page=${page}`) ?? [];
     files.push(...batch);
     if (batch.length < 100) break;
   }
@@ -46,11 +48,11 @@ async function changedFiles(number) {
 }
 
 /** patch の足された行 (先頭の + を外す)。 */
-const addedLines = patch => (patch ?? '').split('\n').filter(l => l.startsWith('+') && !l.startsWith('+++')).map(l => l.slice(1));
+const addedLines = (patch: string | undefined) => (patch ?? '').split('\n').filter(l => l.startsWith('+') && !l.startsWith('+++')).map(l => l.slice(1));
 
-const copyrightOf = line => /copyright\s*(\(c\)|©)?\s*\d{4}/i.test(line) ? line.replace(/^[\s#/;*!<>-]*(rem\s+)?/i, '').trim() : null;
+const copyrightOf = (line: string) => /copyright\s*(\(c\)|©)?\s*\d{4}/i.test(line) ? line.replace(/^[\s#/;*!<>-]*(rem\s+)?/i, '').trim() : null;
 
-function check(files, author) {
+function check(files: ChangedFile[], author: string) {
   const findings = [];
   const isOwner = Owners.some(o => o.toLowerCase() === author.toLowerCase());
   for (const file of files) {
@@ -76,7 +78,7 @@ function check(files, author) {
   return findings;
 }
 
-function message(findings, author) {
+function message(findings: Finding[], author: string) {
   const list = findings.map(f => `- \`${f.file}\`\n${f.problems.map(p => `  - ${p}`).join('\n')}`).join('\n');
   return [
     `@${author} さん、ソースファイルの先頭のライセンス・著作権の表記を確認させてください。`,
@@ -95,12 +97,12 @@ function message(findings, author) {
   ].join('\n');
 }
 
-async function upsert(number, body) {
-  const comments = await gh('GET', `/issues/${number}/comments?per_page=100`) ?? [];
+async function upsert(number: number, body: string | null) {
+  const comments = await gh<Comment[]>('GET', `/issues/${number}/comments?per_page=100`) ?? [];
   const mine = comments.find(c => c.user?.type === 'Bot' && c.body?.includes(Marker));
   if (!body) {
     // 直った: 前に指摘していたら、直ったことを書く (指摘が無かったなら何もしない)
-    if (mine && !mine.body.includes('✅')) await gh('PATCH', `/issues/comments/${mine.id}`, { body: `${Marker}\n✅ ライセンス・著作権の表記を確認しました。ありがとうございます。` });
+    if (mine && !mine.body?.includes('✅')) await gh('PATCH', `/issues/comments/${mine.id}`, { body: `${Marker}\n✅ ライセンス・著作権の表記を確認しました。ありがとうございます。` });
     return;
   }
   if (mine) await gh('PATCH', `/issues/comments/${mine.id}`, { body: `${Marker}\n${body}` });
@@ -108,18 +110,19 @@ async function upsert(number, body) {
 }
 
 async function main() {
-  const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
+  const event: BotEvent = JSON.parse(fs.readFileSync(requiredEnv('GITHUB_EVENT_PATH'), 'utf8'));
   const pr = event.pull_request;
+  if (!pr) throw new Error('Pull request event required');
   const author = pr.user.login;
   const findings = check(await changedFiles(pr.number), author);
   for (const f of findings) console.log(`${f.file}: ${f.problems.join(' / ')}`);
   await upsert(pr.number, findings.length ? message(findings, author) : null);
 }
 
-/** node .github/bot/notices.mjs --self-test: 判定だけを確かめる (GitHub には何も書かない)。 */
+/** node .github/bot/notices.ts --self-test: 判定だけを確かめる (GitHub には何も書かない)。 */
 function selfTest() {
-  const file = (filename, status, lines) => ({ filename, status, patch: lines.map(l => `+${l}`).join('\n') });
-  const cases = [
+  const file = (filename: string, status: string, lines: string[]) => ({ filename, status, patch: lines.map(l => `+${l}`).join('\n') });
+  const cases: [string, ChangedFile[], string, number][] = [
     ['他の人が Yukishiro 名義', [file('a.cs', 'added', ['// SPDX-License-Identifier: GPL-3.0-or-later', '// Copyright (C) 2026 Yukishiro'])], 'someone', 1],
     ['他の人が自分の名前', [file('a.cs', 'added', ['// SPDX-License-Identifier: GPL-3.0-or-later', '// Copyright (C) 2026 someone'])], 'someone', 0],
     ['作者が Yukishiro 名義', [file('a.cs', 'added', ['// SPDX-License-Identifier: GPL-3.0-or-later', '// Copyright (C) 2026 Yukishiro'])], 'yksr-melt', 0],
