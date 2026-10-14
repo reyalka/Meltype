@@ -121,7 +121,7 @@ function reproduce({
   }
 }
 
-test('issue #686: inline code in reported text is reproduced', () => {
+await test('issue #686: inline code in reported text is reproduced', () => {
   const r = reproduce({
     reported: '`エン湿地フィcation`',
     expected: '`enshittification`',
@@ -133,7 +133,7 @@ test('issue #686: inline code in reported text is reproduced', () => {
   assert.equal(r.reproducedLabel, true);
 });
 
-test('inline code in typed and expected text is accepted and matches', () => {
+await test('inline code in typed and expected text is accepted and matches', () => {
   const r = reproduce({
     typed: '`enshittification`',
     reported: '`エン湿地フィcation`',
@@ -145,7 +145,7 @@ test('inline code in typed and expected text is accepted and matches', () => {
   assert.equal(r.reproducedLabel, false);
 });
 
-test('plain form values still reproduce', () => {
+await test('plain form values still reproduce', () => {
   assert.match(
     reproduce({
       reported: 'エン湿地フィcation',
@@ -156,7 +156,7 @@ test('plain form values still reproduce', () => {
   );
 });
 
-test('PR #649: different Japanese strings never match via empty ASCII words', () => {
+await test('PR #649: different Japanese strings never match via empty ASCII words', () => {
   const r = reproduce({
     typed: 'yahoyaho',
     reported: '`谷保谷保`',
@@ -167,7 +167,7 @@ test('PR #649: different Japanese strings never match via empty ASCII words', ()
   assert.doesNotMatch(r.comment, /期待どおり/);
 });
 
-test('different strings sharing ASCII words remain different', () => {
+await test('different strings sharing ASCII words remain different', () => {
   const r = reproduce({
     reported: '`別のcation`',
     expected: '`期待cation`',
@@ -177,7 +177,7 @@ test('different strings sharing ASCII words remain different', () => {
   assert.equal(r.reproducedLabel, false);
 });
 
-test('converted result is still compared exactly', () => {
+await test('converted result is still compared exactly', () => {
   assert.match(
     reproduce({
       reported: '`谷保谷保`',
@@ -198,7 +198,7 @@ test('converted result is still compared exactly', () => {
   );
 });
 
-test('spaces inside code delimiters are preserved', () => {
+await test('spaces inside code delimiters are preserved', () => {
   const r = reproduce({
     reported: '`エン湿地フィcation `',
     expected: '`enshittification`',
@@ -208,13 +208,13 @@ test('spaces inside code delimiters are preserved', () => {
   assert.match(r.comment, /報告とは違う結果/);
 });
 
-test('multiple backtick delimiters preserve a literal backtick', () => {
+await test('multiple backtick delimiters preserve a literal backtick', () => {
   const r = reproduce({ reported: '``a`b``', expected: '`other`', actual: 'a`b' });
   assert.equal(r.parsed.reported, 'a`b');
   assert.match(r.comment, /再現しました/);
 });
 
-test('unpaired backticks and prose are not stripped', () => {
+await test('unpaired backticks and prose are not stripped', () => {
   for (const text of ['`value', 'value`', '`value``', '`a` and `b`']) {
     const r = reproduce({ reported: text, expected: 'other', actual: 'value' });
     assert.equal(r.parsed.reported, text);

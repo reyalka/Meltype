@@ -72,7 +72,7 @@ function osLabels(os: string) {
 }
 
 function lastKey(text: string) {
-  if (/^Space/.test(text)) return 'space';
+  if (text.startsWith('Space')) return 'space';
   if (/途中/.test(text)) return 'none';
   return 'enter';
 }
@@ -135,8 +135,8 @@ function environmentLabels(text: string) {
   }
   const result = [];
   const os = env['OS'] ?? '';
-  if (/^Windows 11/.test(os)) result.push({ label: 'win11', reason: `OS が ${os}` });
-  else if (/^Windows 10/.test(os)) result.push({ label: 'win10', reason: `OS が ${os}` });
+  if (os.startsWith('Windows 11')) result.push({ label: 'win11', reason: `OS が ${os}` });
+  else if (os.startsWith('Windows 10')) result.push({ label: 'win10', reason: `OS が ${os}` });
   if (/Enterprise|Education/i.test(os))
     result.push({
       label: '企業PC',
@@ -153,7 +153,7 @@ function environmentLabels(text: string) {
     });
   if (/はい/.test(env['管理者として実行'] ?? ''))
     result.push({ label: '管理者で実行', reason: 'Meltype を管理者として実行していた' });
-  if (/^AutoSwitch/.test(env['モード'] ?? ''))
+  if ((env['モード'] ?? '').startsWith('AutoSwitch'))
     result.push({ label: 'IME自動切替', reason: 'モードが IME 自動切替' });
   if (/Mozc:\s*なし/.test(env['変換エンジン'] ?? ''))
     result.push({ label: 'Mozcなし', reason: 'Mozc の変換ヘルパーが無い' });
@@ -451,7 +451,8 @@ async function parse() {
   });
 }
 
-const code = (text: unknown) => '`' + String(text ?? '').replace(/`/g, 'ˋ') + '`';
+const code = (text: string | number | null | undefined) =>
+  '`' + String(text ?? '').replace(/`/g, 'ˋ') + '`';
 
 function readJson<T>(file: string): T | null {
   try {
@@ -494,8 +495,8 @@ async function report() {
       return;
     }
     const reported = process.env.BOT_REPORTED,
-      expected = process.env.BOT_EXPECTED,
-      kind = process.env.BOT_KIND ?? '';
+      expected = process.env.BOT_EXPECTED;
+
     const rows = [],
       verdicts = [];
     let engine = '';

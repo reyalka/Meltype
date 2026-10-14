@@ -14,13 +14,13 @@ const api = process.env.GITHUB_API_URL ?? 'https://api.github.com';
 const repo = process.env.GITHUB_REPOSITORY;
 const summary = (text: string) =>
   fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY ?? '/dev/stdout', text + '\n');
-const code = (text: unknown) =>
+const code = (text: string | number | null | undefined) =>
   '`' +
   String(text ?? '')
     .replace(/`/g, 'ˋ')
     .replace(/\|/g, '\\|') +
   '`';
-const cell = (text: unknown) =>
+const cell = (text: string | number | null | undefined) =>
   String(text ?? '')
     .replace(/\|/g, '\\|')
     .replace(/\n/g, ' ');
